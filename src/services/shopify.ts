@@ -94,11 +94,9 @@ export class ShopifyService {
         location_id: locationId,
         available: quantity,
       });
-      
-      console.log(`✅ Shopify inventory updated for variant ${variantId}: ${quantity} available`);
       return inventoryLevel;
     } catch (error:any) {
-      console.error(`❌ Shopify inventory update failed for variant ${variantId}:`, error);
+      console.error(`Shopify inventory update failed for variant ${variantId}:`, error);
       
       // Check if it's a 404 error (variant not found)
       if (error.message && error.message.includes('404')) {
@@ -164,17 +162,13 @@ export class ShopifyService {
       this.checkShopifyInitialized();
       
       if (!this.shopify) {
-        console.error('❌ Shopify client not initialized');
+        console.error('Shopify client not initialized');
         return null;
       }
-      
-      console.log(`🔄 Fetching inventory for product ${productId}, variant ${variantId} from Shopify`);
-      
       // Get product details from Shopify
       const product = await this.shopify.product.get(parseInt(productId));
       
       if (!product || !product.variants) {
-        console.log(`⚠️ Product ${productId} not found in Shopify`);
         return null;
       }
 
@@ -182,7 +176,6 @@ export class ShopifyService {
       const variant = product.variants.find(v => v.id?.toString() === variantId);
       
       if (!variant) {
-        console.log(`⚠️ Variant ${variantId} not found in product ${productId}`);
         return null;
       }
 
@@ -199,8 +192,6 @@ export class ShopifyService {
           available: inventoryLevel.available || 0,
           reserved: 0 // Shopify doesn't provide reserved inventory directly
         };
-
-        console.log(`✅ Fetched inventory from Shopify: ${result.available} available`);
         return result;
       }
 
@@ -211,16 +202,17 @@ export class ShopifyService {
           available: variant.inventory_quantity,
           reserved: 0
         };
-
-        console.log(`✅ Fetched inventory from variant data: ${result.available} available`);
         return result;
       }
-
-      console.log(`⚠️ No inventory data found for variant ${variantId}`);
       return null;
 
-    } catch (error) {
-      console.error(`❌ Error fetching inventory from Shopify:`, error);
+    } catch (error: any) {
+      // Check if it's a 404 error (product or variant not found)
+      if (error.statusCode === 404 || (error.message && error.message.includes('404'))) {
+        return null; // Return null to indicate the product/variant should be cleaned up
+      }
+      
+      console.error(`Error fetching inventory from Shopify:`, error);
       return null;
     }
   }

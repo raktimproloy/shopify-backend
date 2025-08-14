@@ -14,8 +14,7 @@ export class JobQueueService {
     if (process.env.REDIS_HOST || process.env.REDIS_PORT || process.env.REDIS_PASSWORD) {
       this.initializeRedis();
     } else {
-      console.log('⚠️ Redis not configured. Background jobs will be disabled.');
-      console.log('💡 Set REDIS_HOST, REDIS_PORT, or REDIS_PASSWORD to enable background jobs.');
+      console.log('Redis not configured. Background jobs will be disabled.');
     }
   }
 
@@ -42,12 +41,8 @@ export class JobQueueService {
       
       this.redisAvailable = true;
       this.setupQueueHandlers();
-      
-      console.log('✅ Redis connection established. Background jobs enabled.');
     } catch (error) {
-      console.warn('⚠️ Redis connection failed. Background jobs will be disabled.');
-      console.warn('💡 Error:', (error as Error).message);
-      console.warn('💡 To enable background jobs, ensure Redis is running and accessible.');
+      console.warn('Error:', (error as Error).message);
       
       this.redisAvailable = false;
       this.inventorySyncQueue = null;
@@ -58,26 +53,26 @@ export class JobQueueService {
   private setupQueueHandlers() {
     // Inventory sync queue handler
     this.inventorySyncQueue!.on('completed', (job) => {
-      console.log(`✅ Inventory sync job ${job.id} completed successfully`);
+      console.log(`Inventory sync job ${job.id} completed successfully`);
     });
 
     this.inventorySyncQueue!.on('failed', (job, error) => {
-      console.error(`❌ Inventory sync job ${job.id} failed:`, error);
+      console.error(`Inventory sync job ${job.id} failed:`, error);
       // Log additional details for recurring jobs
       if (job.name === 'recurring-inventory-sync') {
-        console.error(`🔄 Recurring job failed - will retry according to schedule`);
+        console.error(`Recurring job failed - will retry according to schedule`);
       }
     });
 
     // Process inventory sync jobs (read-only by default)
     this.inventorySyncQueue!.process('sync-inventory', async (job) => {
       try {
-        console.log(`🔄 Processing inventory sync job ${job.id} (read-only)`);
+        console.log(`Processing inventory sync job ${job.id} (read-only)`);
         const result = await this.productService.syncInventoryFromShopifyReadOnly();
-        console.log(`✅ Inventory sync job ${job.id} completed successfully`);
+        console.log(`Inventory sync job ${job.id} completed successfully`);
         return result;
       } catch (error) {
-        console.error(`❌ Inventory sync job ${job.id} failed:`, error);
+        console.error(`Inventory sync job ${job.id} failed:`, error);
         throw error;
       }
     });
@@ -85,12 +80,10 @@ export class JobQueueService {
     // Process Shopify inventory sync jobs (read-only by default)
     this.inventorySyncQueue!.process('shopify-inventory-sync', async (job) => {
       try {
-        console.log(`🔄 Processing Shopify inventory sync job ${job.id} (read-only)`);
         const result = await this.productService.syncInventoryFromShopifyReadOnly();
-        console.log(`✅ Shopify inventory sync job ${job.id} completed successfully`);
         return result;
       } catch (error) {
-        console.error(`❌ Shopify inventory sync job ${job.id} failed:`, error);
+        console.error(`Shopify inventory sync job ${job.id} failed:`, error);
         throw error;
       }
     });
@@ -98,35 +91,31 @@ export class JobQueueService {
     // Process recurring inventory sync jobs (read-only by default)
     this.inventorySyncQueue!.process('recurring-inventory-sync', async (job) => {
       try {
-        console.log(`🔄 Processing recurring inventory sync job ${job.id} (read-only)`);
         const result = await this.productService.syncInventoryFromShopifyReadOnly();
-        console.log(`✅ Recurring inventory sync job ${job.id} completed successfully`);
         return result;
       } catch (error) {
-        console.error(`❌ Recurring inventory sync job ${job.id} failed:`, error);
+        console.error(`Recurring inventory sync job ${job.id} failed:`, error);
         throw error;
       }
     });
 
     // Product sync queue handler
     this.productSyncQueue!.on('completed', (job) => {
-      console.log(`✅ Product sync job ${job.id} completed successfully`);
+      console.log(`Product sync job ${job.id} completed successfully`);
     });
 
     this.productSyncQueue!.on('failed', (job, error) => {
-      console.error(`❌ Product sync job ${job.id} failed:`, error);
+      console.error(`Product sync job ${job.id} failed:`, error);
     });
 
     // Process product create jobs
     this.productSyncQueue!.process('product-create', async (job) => {
       const { data } = job.data;
       try {
-        console.log(`🔄 Processing product create job ${job.id}`);
         const result = await this.productService.deployToShopify(data);
-        console.log(`✅ Product create job ${job.id} completed successfully`);
         return result;
       } catch (error) {
-        console.error(`❌ Product create job ${job.id} failed:`, error);
+        console.error(`Product create job ${job.id} failed:`, error);
         throw error;
       }
     });
@@ -135,12 +124,10 @@ export class JobQueueService {
     this.productSyncQueue!.process('product-update', async (job) => {
       const { data, productId } = job.data;
       try {
-        console.log(`🔄 Processing product update job ${job.id}`);
         const result = await this.productService.updateProductInShopify(productId, data);
-        console.log(`✅ Product update job ${job.id} completed successfully`);
         return result;
       } catch (error) {
-        console.error(`❌ Product update job ${job.id} failed:`, error);
+        console.error(`Product update job ${job.id} failed:`, error);
         throw error;
       }
     });
@@ -149,12 +136,10 @@ export class JobQueueService {
     this.productSyncQueue!.process('product-import', async (job) => {
       const { data } = job.data;
       try {
-        console.log(`🔄 Processing product import job ${job.id}`);
         const result = await this.productService.importFromShopify(data);
-        console.log(`✅ Product import job ${job.id} completed successfully`);
         return result;
       } catch (error) {
-        console.error(`❌ Product import job ${job.id} failed:`, error);
+        console.error(`Product import job ${job.id} failed:`, error);
         throw error;
       }
     });
@@ -163,15 +148,11 @@ export class JobQueueService {
     this.productSyncQueue!.process('shopify-import', async (job) => {
       const { data } = job.data;
       try {
-        console.log(`🔄 Processing Shopify import job ${job.id}`);
-        console.log(`📊 Job data:`, JSON.stringify(data, null, 2));
-        
         const result = await this.productService.importFromShopifyBulk(data);
-        console.log(`✅ Shopify import job ${job.id} completed successfully`);
         return result;
       } catch (error) {
-        console.error(`❌ Shopify import job ${job.id} failed:`, error);
-        console.error(`📋 Job data that caused failure:`, JSON.stringify(data, null, 2));
+        console.error(`Shopify import job ${job.id} failed:`, error);
+        console.error(`Job data that caused failure:`, JSON.stringify(data, null, 2));
         
         // Log additional error details for debugging
         if (error instanceof Error) {
@@ -182,6 +163,20 @@ export class JobQueueService {
           });
         }
         
+        throw error;
+      }
+    });
+
+    // Process recurring product sync jobs
+    this.productSyncQueue!.process('recurring-product-sync', async (job) => {
+      try {
+        const result = await this.productService.importFromShopifyBulk({
+          limit: 50,
+          syncDeletions: true
+        });
+        return result;
+      } catch (error) {
+        console.error(`Recurring product sync job ${job.id} failed:`, error);
         throw error;
       }
     });
@@ -199,14 +194,11 @@ export class JobQueueService {
     attempts?: number;
   } = {}) {
     if (!this.redisAvailable) {
-      // Fallback: execute immediately without queue
-      console.log('📝 Redis not available. Executing inventory sync immediately...');
       try {
         const result = await this.productService.syncInventoryFromShopifyReadOnly();
-        console.log('✅ Inventory sync completed immediately (read-only)');
         return { id: 'immediate', result, immediate: true };
       } catch (error) {
-        console.error('❌ Immediate inventory sync failed:', error);
+        console.error('Immediate inventory sync failed:', error);
         throw error;
       }
     }
@@ -226,8 +218,6 @@ export class JobQueueService {
         removeOnFail: 50,
       }
     );
-
-    console.log(`📝 Added inventory sync job ${job.id} to queue (read-only)`);
     return { id: job.id, immediate: false };
   }
 
@@ -238,14 +228,11 @@ export class JobQueueService {
     attempts?: number;
   } = {}) {
     if (!this.redisAvailable) {
-      // Fallback: execute immediately without queue
-      console.log('📝 Redis not available. Executing Shopify inventory sync immediately...');
       try {
         const result = await this.productService.syncInventoryFromShopifyReadOnly();
-        console.log('✅ Shopify inventory sync completed immediately (read-only)');
         return { id: 'immediate', result, immediate: true };
       } catch (error) {
-        console.error('❌ Immediate Shopify inventory sync failed:', error);
+        console.error('Immediate Shopify inventory sync failed:', error);
         throw error;
       }
     }
@@ -265,8 +252,6 @@ export class JobQueueService {
         removeOnFail: 50,
       }
     );
-
-    console.log(`📝 Added Shopify inventory sync job ${job.id} to queue (read-only)`);
     return { id: job.id, immediate: false };
   }
 
@@ -282,8 +267,6 @@ export class JobQueueService {
     } = {}
   ) {
     if (!this.redisAvailable) {
-      // Fallback: execute immediately without queue
-      console.log(`📝 Redis not available. Executing product ${operation} immediately...`);
       try {
         let result;
         if (operation === 'import') {
@@ -291,10 +274,9 @@ export class JobQueueService {
         } else {
           result = await this.productService.updateProductInShopify(options.productId!, data);
         }
-        console.log(`✅ Product ${operation} completed immediately`);
         return { id: 'immediate', result, immediate: true };
       } catch (error) {
-        console.error(`❌ Immediate product ${operation} failed:`, error);
+        console.error(`Immediate product ${operation} failed:`, error);
         throw error;
       }
     }
@@ -312,8 +294,6 @@ export class JobQueueService {
         },
       }
     );
-
-    console.log(`📋 Product ${operation} job added to queue with ID: ${job.id}`);
     return job;
   }
 
@@ -325,18 +305,14 @@ export class JobQueueService {
     priority?: number;
   } = {}) {
     if (!this.redisAvailable) {
-      // Fallback: execute immediately without queue
-      console.log('📝 Redis not available. Executing Shopify import immediately...');
       try {
         const result = await this.productService.importFromShopifyBulk({
           limit: options.limit || 50,
           syncDeletions: options.syncDeletions !== false
         });
-        
-        console.log(`✅ Shopify import completed immediately. Imported ${result.importedCount} products.`);
         return { id: 'immediate', result, immediate: true };
       } catch (error) {
-        console.error('❌ Immediate Shopify import failed:', error);
+        console.error('Immediate Shopify import failed:', error);
         throw error;
       }
     }
@@ -348,9 +324,6 @@ export class JobQueueService {
       delay: Math.max(0, options.delay || 360000), // Ensure delay is non-negative
       priority: Math.max(1, Math.min(options.priority || 1, 10)) // Ensure priority is between 1 and 10
     };
-
-    console.log(`📋 Creating delayed Shopify import job with options:`, validatedOptions);
-
     const job = await this.productSyncQueue!.add(
       'shopify-import',
       { 
@@ -370,16 +343,12 @@ export class JobQueueService {
         },
       }
     );
-
-    console.log(`📋 Delayed Shopify import job added to queue with ID: ${job.id}, delay: ${validatedOptions.delay}ms`);
     return job;
   }
 
   // Schedule recurring inventory sync
   async scheduleRecurringInventorySync(cronExpression: string = '*/6 * * * *') { // Every 6 minutes
     if (!this.redisAvailable) {
-      console.log('📅 Redis not available. Cannot schedule recurring jobs.');
-      console.log('💡 Set up Redis to enable scheduled background jobs.');
       return { id: 'no-redis', message: 'Redis not available for scheduling' };
     }
 
@@ -402,17 +371,12 @@ export class JobQueueService {
         },
       }
     );
-
-    console.log(`📅 Scheduled recurring inventory sync with pattern: ${cronExpression}`);
-    console.log(`🔄 Job ID: ${job.id} - Will execute every 6 minutes`);
     return job;
   }
 
   // Schedule recurring Shopify inventory sync
   async scheduleRecurringShopifyInventorySync(cronExpression: string = '0 */6 * * *') { // Every 6 hours
     if (!this.redisAvailable) {
-      console.log('📅 Redis not available. Cannot schedule recurring jobs.');
-      console.log('💡 Set up Redis to enable scheduled background jobs.');
       return { id: 'no-redis', message: 'Redis not available for scheduling' };
     }
 
@@ -435,9 +399,34 @@ export class JobQueueService {
         },
       }
     );
+    return job;
+  }
 
-    console.log(`📅 Scheduled recurring Shopify inventory sync with pattern: ${cronExpression}`);
-    console.log(`🔄 Job ID: ${job.id} - Will execute every 6 hours`);
+  // Schedule recurring product sync from Shopify
+  async scheduleRecurringProductSync(cronExpression: string = '*/6 * * * *') { // Every 6 minutes
+    if (!this.redisAvailable) {
+      return { id: 'no-redis', message: 'Redis not available for scheduling' };
+    }
+
+    // Clear any existing recurring product sync jobs first
+    await this.clearRecurringProductSync();
+
+    const job = await this.productSyncQueue!.add(
+      'recurring-product-sync',
+      {},
+      {
+        repeat: {
+          cron: cronExpression,
+        },
+        removeOnComplete: 100,
+        removeOnFail: 50,
+        attempts: 3, // Allow retries for recurring jobs
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+      }
+    );
     return job;
   }
 
@@ -455,7 +444,6 @@ export class JobQueueService {
 
       for (const job of inventorySyncJobs) {
         await this.inventorySyncQueue!.removeRepeatableByKey(job.key);
-        console.log(`🗑️ Removed existing recurring inventory sync job: ${job.key}`);
       }
 
       return { 
@@ -463,7 +451,7 @@ export class JobQueueService {
         clearedCount: inventorySyncJobs.length
       };
     } catch (error) {
-      console.error('❌ Error clearing recurring inventory sync jobs:', error);
+      console.error('Error clearing recurring inventory sync jobs:', error);
       throw error;
     }
   }
@@ -482,7 +470,6 @@ export class JobQueueService {
 
       for (const job of shopifyInventorySyncJobs) {
         await this.inventorySyncQueue!.removeRepeatableByKey(job.key);
-        console.log(`🗑️ Removed existing recurring Shopify inventory sync job: ${job.key}`);
       }
 
       return { 
@@ -490,7 +477,33 @@ export class JobQueueService {
         clearedCount: shopifyInventorySyncJobs.length
       };
     } catch (error) {
-      console.error('❌ Error clearing recurring Shopify inventory sync jobs:', error);
+      console.error('Error clearing recurring Shopify inventory sync jobs:', error);
+      throw error;
+    }
+  }
+
+  // Clear existing recurring product sync jobs
+  async clearRecurringProductSync() {
+    if (!this.redisAvailable) {
+      return { message: 'Redis not available' };
+    }
+
+    try {
+      const repeatableJobs = await this.productSyncQueue!.getRepeatableJobs();
+      const productSyncJobs = repeatableJobs.filter(job => 
+        job.name === 'recurring-product-sync'
+      );
+
+      for (const job of productSyncJobs) {
+        await this.productSyncQueue!.removeRepeatableByKey(job.key);
+      }
+
+      return { 
+        message: `Cleared ${productSyncJobs.length} existing recurring product sync jobs`,
+        clearedCount: productSyncJobs.length
+      };
+    } catch (error) {
+      console.error('Error clearing recurring product sync jobs:', error);
       throw error;
     }
   }
@@ -532,6 +545,14 @@ export class JobQueueService {
       cron: recurringJobs[0]?.cron
     } : null;
 
+    // Get recurring product sync job information
+    const recurringProductJobs = await this.productSyncQueue!.getRepeatableJobs();
+    const recurringProductJobInfo = recurringProductJobs.length > 0 ? {
+      count: recurringProductJobs.length,
+      nextRun: recurringProductJobs[0]?.next,
+      cron: recurringProductJobs[0]?.cron
+    } : null;
+
     return {
       inventory: {
         waiting: inventoryStats.waiting,
@@ -548,7 +569,8 @@ export class JobQueueService {
         completed: productStats.completed,
         failed: productStats.failed,
         delayed: productStats.delayed,
-        status: 'active'
+        status: 'active',
+        recurringJobs: recurringProductJobInfo
       },
       redisStatus: 'enabled'
     };
@@ -557,7 +579,6 @@ export class JobQueueService {
   // Clean up completed/failed jobs
   async cleanupOldJobs() {
     if (!this.redisAvailable) {
-      console.log('🧹 Redis not available. No jobs to clean up.');
       return;
     }
 
@@ -567,43 +588,67 @@ export class JobQueueService {
       this.productSyncQueue!.clean(24 * 60 * 60 * 1000, 'completed'), // 24 hours
       this.productSyncQueue!.clean(24 * 60 * 60 * 1000, 'failed'), // 24 hours
     ]);
-
-    console.log('🧹 Cleaned up old completed/failed jobs');
   }
 
   // Get recurring jobs information
   async getRecurringJobs() {
-    if (!this.redisAvailable || !this.inventorySyncQueue) {
+    if (!this.redisAvailable || !this.inventorySyncQueue || !this.productSyncQueue) {
       return [];
     }
 
     try {
-      const recurringJobs = await this.inventorySyncQueue.getRepeatableJobs();
-      return recurringJobs.map(job => ({
-        id: job.id,
-        name: job.name,
-        cron: job.cron,
-        next: job.next,
-        key: job.key
-      }));
+      const [inventoryRecurringJobs, productRecurringJobs] = await Promise.all([
+        this.inventorySyncQueue.getRepeatableJobs(),
+        this.productSyncQueue.getRepeatableJobs(),
+      ]);
+      
+      const allJobs = [
+        ...inventoryRecurringJobs.map(job => ({
+          id: job.id,
+          name: job.name,
+          cron: job.cron,
+          next: job.next,
+          key: job.key,
+          queue: 'inventory'
+        })),
+        ...productRecurringJobs.map(job => ({
+          id: job.id,
+          name: job.name,
+          cron: job.cron,
+          next: job.next,
+          key: job.key,
+          queue: 'product'
+        }))
+      ];
+      
+      return allJobs;
     } catch (error) {
       console.error('Error getting recurring jobs:', error);
       return [];
     }
   }
 
+  // Clean up missing Shopify products
+  async cleanupMissingShopifyProducts() {
+    try {
+      const result = await this.productService.cleanupMissingShopifyProducts();
+      return result;
+    } catch (error) {
+      console.error('Cleanup failed via JobQueueService:', error);
+      throw error;
+    }
+  }
+
   // Graceful shutdown
   async shutdown() {
-    console.log('🔄 Shutting down job queues...');
     
     if (this.redisAvailable && this.inventorySyncQueue && this.productSyncQueue) {
       await Promise.all([
         this.inventorySyncQueue.close(),
         this.productSyncQueue.close(),
       ]);
-      console.log('✅ Job queues shut down successfully');
     } else {
-      console.log('ℹ️ No job queues to shut down (Redis not available)');
+      console.log('No job queues to shut down (Redis not available)');
     }
   }
 }

@@ -25,11 +25,6 @@ app.use(express.urlencoded({ extended: true }));
 // Initialize job queue service
 const jobQueueService = new JobQueueService();
 
-// Note: Recurring inventory sync should be scheduled manually via API
-// to avoid conflicts with existing scheduled jobs
-console.log('📊 Job queue service initialized');
-console.log('💡 Use /api/jobs/schedule-inventory-sync to schedule recurring sync');
-
 // Routes
 app.use('/api/products', productRoutes);
 app.use('/api/integrations', integrationRoutes);
@@ -58,26 +53,22 @@ const PORT = process.env.PORT || 3001;
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
-  console.log('🔄 SIGTERM received, shutting down gracefully...');
   await jobQueueService.shutdown();
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
-  console.log('🔄 SIGINT received, shutting down gracefully...');
   await jobQueueService.shutdown();
   process.exit(0);
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Job queue service initialized`);
   
   if (jobQueueService.isRedisAvailable()) {
-    console.log(`✅ Background jobs enabled with Redis`);
+    console.log(`Background jobs enabled with Redis`);
   } else {
-    console.log(`⚠️ Background jobs disabled (Redis not available)`);
-    console.log(`💡 Jobs will execute immediately without queuing`);
+    console.log(`Background jobs disabled (Redis not available)`);
+    console.log(`Jobs will execute immediately without queuing`);
   }
 });
 

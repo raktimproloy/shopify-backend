@@ -36,13 +36,8 @@ router.post('/shopify/deploy', async (req, res) => {
 router.post('/shopify/import', async (req, res) => {
   try {
     const { limit = 50, syncDeletions = true } = req.body;
-    
-    console.log('🔄 Starting Shopify product import with deletion sync...');
-    
     // Get products from Shopify
     const shopifyProducts = await shopify.getProducts(limit);
-    
-    console.log(`📦 Found ${shopifyProducts.length} products in Shopify`);
     
     const importedProducts = [];
     const updatedProducts = [];
@@ -61,7 +56,6 @@ router.post('/shopify/import', async (req, res) => {
           // Product exists locally but not in Shopify - mark as deleted
           await productService.markProductAsDeleted(existingProduct.id);
           deletedCount++;
-          console.log(`🗑️ Marked as deleted: ${existingProduct.name}`);
         }
       }
     }
@@ -80,15 +74,13 @@ router.post('/shopify/import', async (req, res) => {
           // Update existing product
           const updatedProduct = await productService.updateFromShopify(existingProduct.id, shopifyProduct);
           updatedProducts.push(updatedProduct);
-          console.log(`🔄 Updated: ${shopifyProduct.title}`);
         } else {
           // Import new product
           const importedProduct = await productService.importFromShopify(shopifyProduct);
           importedProducts.push(importedProduct);
-          console.log(`✅ Imported: ${shopifyProduct.title}`);
         }
       } catch (error) {
-        console.error(`❌ Failed to process ${shopifyProduct.title}:`, error);
+        console.error(`Failed to process ${shopifyProduct.title}:`, error);
         failedProducts.push({
           title: shopifyProduct.title,
           error: (error as Error).message
@@ -109,7 +101,7 @@ router.post('/shopify/import', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ Shopify import failed:', error);
+    console.error('Shopify import failed:', error);
     res.status(500).json({ 
       error: 'Failed to import products from Shopify',
       details: (error as Error).message 
@@ -130,8 +122,6 @@ router.post('/inventory/sync', async (req, res) => {
 // Bidirectional inventory sync (can overwrite Shopify data - use with caution)
 router.post('/inventory/bidirectional-sync', async (req, res) => {
   try {
-    console.log('🔄 Starting bidirectional inventory sync...');
-    
     const syncResult = await productService.syncInventoryAcrossChannels();
     
     res.json({
@@ -141,7 +131,7 @@ router.post('/inventory/bidirectional-sync', async (req, res) => {
       warning: 'This operation can overwrite Shopify inventory data. Use with caution.'
     });
   } catch (error) {
-    console.error('❌ Bidirectional inventory sync failed:', error);
+    console.error('Bidirectional inventory sync failed:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

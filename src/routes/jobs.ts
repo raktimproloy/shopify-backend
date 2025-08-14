@@ -222,6 +222,44 @@ router.post('/schedule-shopify-inventory-sync', async (req, res) => {
   }
 });
 
+// Schedule recurring product sync from Shopify
+router.post('/schedule-product-sync', async (req, res) => {
+  try {
+    const { cronExpression } = req.body;
+    
+    if (!jobQueueService.isRedisAvailable()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Redis not available',
+        message: 'Cannot schedule recurring jobs without Redis. Jobs will execute immediately when requested.',
+        redisAvailable: false,
+        recommendations: [
+          'Install Redis to enable scheduled background jobs',
+          'Set REDIS_HOST, REDIS_PORT environment variables',
+          'Use Docker: docker run -d --name redis -p 6379:6379 redis:alpine'
+        ]
+      });
+    }
+    
+    const job = await jobQueueService.scheduleRecurringProductSync(cronExpression);
+    
+    res.json({
+      success: true,
+      message: 'Recurring product sync scheduled',
+      jobId: job.id,
+      cronExpression: cronExpression || '*/6 * * * *',
+      redisAvailable: true
+    });
+  } catch (error) {
+    console.error('Error scheduling recurring product sync:', error);
+    res.status(500).json({ 
+      error: (error as Error).message,
+      message: 'Failed to schedule recurring product sync',
+      redisAvailable: jobQueueService.isRedisAvailable()
+    });
+  }
+});
+
 // Get recurring jobs information
 router.get('/recurring', async (req, res) => {
   try {
@@ -285,6 +323,25 @@ router.delete('/recurring-shopify-inventory-sync', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to clear recurring Shopify inventory sync jobs',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Clear existing recurring product sync jobs
+router.delete('/recurring-product-sync', async (req, res) => {
+  try {
+    const result = await jobQueueService.clearRecurringProductSync();
+    res.json({
+      success: true,
+      message: 'Recurring product sync jobs cleared',
+      details: result
+    });
+  } catch (error) {
+    console.error('Error clearing recurring product sync jobs:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to clear recurring product sync jobs',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
@@ -363,6 +420,30 @@ router.post('/delayed-shopify-import', async (req, res) => {
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error',
       message: 'Failed to schedule delayed Shopify import',
+      redisAvailable: jobQueueService.isRedisAvailable()
+    });
+  }
+});
+
+// Clean up missing Shopify products (manual trigger)
+router.post('/cleanup-missing-shopify', async (req, res) => {
+  try {
+    console.log('🧹 Manual cleanup of missing Shopify products requested');
+    
+    const result = await jobQueueService.cleanupMissingShopifyProducts();
+    
+    res.json({
+      success: true,
+      message: 'Cleanup of missing Shopify products completed',
+      result,
+      redisAvailable: jobQueueService.isRedisAvailable()
+    });
+  } catch (error) {
+    console.error('Error cleaning up missing Shopify products:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to clean up missing Shopify products',
+      error: error instanceof Error ? error.message : 'Unknown error',
       redisAvailable: jobQueueService.isRedisAvailable()
     });
   }

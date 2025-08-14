@@ -12,7 +12,6 @@ export class ProductService {
 
   async updateProductInShopify(productId: number, productData: any) {
     try {
-      console.log(`🔄 Updating product ${productId} in Shopify`);
       
       // Get Shopify channel mappings
       const [mapping] = await db.select()
@@ -66,7 +65,7 @@ export class ProductService {
 
       return updatedShopifyProduct;
     } catch (error) {
-      console.error(`❌ Failed to update product ${productId} in Shopify:`, error);
+      console.error(`Failed to update product ${productId} in Shopify:`, error);
       throw error;
     }
   }
@@ -184,8 +183,6 @@ export class ProductService {
     } = {}
   ) {
     try {
-      console.log('🔍 Fetching products from database with filters:', filters);
-      
       let query:any = db.select().from(products);
       
       // Apply status filter
@@ -237,8 +234,6 @@ export class ProductService {
         .limit(limit)
         .offset(offset);
 
-      console.log(`📦 Found ${productList.length} products, fetching variants...`);
-
       const productsWithVariants = await Promise.all(
         productList.map(async (product:any) => {
           let variantsQuery:any = db.select()
@@ -265,8 +260,6 @@ export class ProductService {
       
       // Recalculate total for accurate pagination
       const actualTotal = filteredProducts.length;
-
-      console.log(`✅ Successfully fetched ${filteredProducts.length} products with variants after filtering`);
       
       return {
         products: filteredProducts,
@@ -281,14 +274,13 @@ export class ProductService {
         }
       };
     } catch (error) {
-      console.error('❌ Error in getAllProducts:', error);
+      console.error('Error in getAllProducts:', error);
       throw new Error(`Failed to fetch products: ${(error as Error).message}`);
     }
   }
 
   async getAllProductsIncludingDeleted(limit = 100, offset = 0) {
     try {
-      console.log('🔍 Fetching all products including deleted from database...');
       
       // Get total count for pagination
       const totalProducts = await db.select().from(products);
@@ -299,8 +291,6 @@ export class ProductService {
         .limit(limit)
         .offset(offset);
 
-      console.log(`📦 Found ${productList.length} products, fetching variants...`);
-
       const productsWithVariants = await Promise.all(
         productList.map(async (product) => {
           const variants = await db.select()
@@ -310,8 +300,6 @@ export class ProductService {
           return { ...product, variants };
         })
       );
-
-      console.log(`✅ Successfully fetched ${productsWithVariants.length} products with variants`);
       
       return {
         products: productsWithVariants,
@@ -326,7 +314,7 @@ export class ProductService {
         }
       };
     } catch (error) {
-      console.error('❌ Error in getAllProductsIncludingDeleted:', error);
+      console.error('Error in getAllProductsIncludingDeleted:', error);
       throw new Error(`Failed to fetch all products: ${(error as Error).message}`);
     }
   }
@@ -354,7 +342,6 @@ export class ProductService {
       );
 
       if (variantsWithoutInternal.length > 0) {
-        console.log(`📝 Creating ${variantsWithoutInternal.length} missing internal inventory records`);
         
         for (const variant of variantsWithoutInternal) {
           await db.insert(inventory).values({
@@ -366,18 +353,15 @@ export class ProductService {
             lastSyncAt: new Date(),
           });
         }
-        
-        console.log(`✅ Created ${variantsWithoutInternal.length} internal inventory records`);
       }
     } catch (error) {
-      console.error('❌ Error ensuring internal inventory exists:', error);
+      console.error('Error ensuring internal inventory exists:', error);
     }
   }
 
   // Read-only inventory sync from Shopify (doesn't overwrite Shopify data)
   async syncInventoryFromShopifyReadOnly() {
     try {
-      console.log('🔄 Starting read-only inventory sync from Shopify...');
       
       // Ensure internal inventory records exist
       await this.ensureInternalInventoryExists();
@@ -396,21 +380,14 @@ export class ProductService {
       .innerJoin(channelMappings, eq(productVariants.id, channelMappings.variantId))
       .where(eq(channelMappings.channel, 'shopify'));
 
-      console.log(`📊 Found ${productsWithShopify.length} products with Shopify mappings`);
-
       let syncedFromShopify = 0;
       let failedFromShopify = 0;
 
       for (const product of productsWithShopify) {
         try {
           if (!product.shopifyProductId || !product.shopifyVariantId) {
-            console.log(`⚠️ Skipping product ${product.productName} - missing Shopify IDs`);
             continue;
           }
-
-          // Fetch current inventory from Shopify API
-          console.log(`🔄 Fetching inventory for ${product.productName} from Shopify...`);
-          
           // Get current inventory from Shopify
           const shopifyInventory = await this.shopifyService.getProductInventory(
             product.shopifyProductId as string,
@@ -443,22 +420,39 @@ export class ProductService {
                 eq(inventory.variantId, product.variantId),
                 eq(inventory.channel, 'internal')
               ));
-
-            console.log(`✅ Updated ${product.productName}: ${shopifyInventory.available} available`);
             syncedFromShopify++;
           } else {
-            console.log(`⚠️ Could not fetch inventory for ${product.productName} from Shopify`);
-            failedFromShopify++;
+            try {
+              // Check if this was the last Shopify variant for this product
+              const remainingShopifyVariants = await db.select()
+                .from(channelMappings)
+                .where(and(
+                  eq(channelMappings.productId, product.productId),
+                  eq(channelMappings.channel, 'shopify')
+                ));
+              
+              if (remainingShopifyVariants.length === 0) {
+                // No more Shopify variants for this product - mark product as discontinued
+                await db.update(products)
+                  .set({
+                    status: 'discontinued',
+                    updatedAt: new Date()
+                  })
+                  .where(eq(products.id, product.productId));
+              }
+              
+              failedFromShopify++;
+            } catch (cleanupError) {
+              console.error(`Error cleaning up local data for ${product.productName}:`, cleanupError);
+              failedFromShopify++;
+            }
           }
 
         } catch (error) {
-          console.error(`❌ Error syncing ${product.productName}:`, error);
+          console.error(`Error syncing ${product.productName}:`, error);
           failedFromShopify++;
         }
       }
-
-      console.log(`📊 Read-only inventory sync completed: ${syncedFromShopify} synced, ${failedFromShopify} failed`);
-      
       return {
         success: true,
         syncedFromShopify,
@@ -467,7 +461,7 @@ export class ProductService {
       };
 
     } catch (error) {
-      console.error('❌ Read-only inventory sync failed:', error);
+      console.error('Read-only inventory sync failed:', error);
       throw error;
     }
   }
@@ -475,8 +469,6 @@ export class ProductService {
   // Bidirectional inventory sync (can overwrite Shopify data - use with caution)
   async syncInventoryAcrossChannels() {
     try {
-      console.log('🔄 Starting bidirectional inventory sync across channels...');
-      
       // Ensure internal inventory records exist
       await this.ensureInternalInventoryExists();
       
@@ -510,14 +502,12 @@ export class ProductService {
                 lastSyncAt: new Date(),
               })
               .where(eq(inventory.id, internalItem.id as number));
-
-            console.log(`✅ Updated internal inventory for variant ${shopifyItem.variantId}: ${shopifyItem.quantity} available`);
             syncedFromShopify++;
           } else {
-            console.log(`⚠️ No internal inventory record found for variant ${shopifyItem.variantId}`);
+            console.log(`No internal inventory record found for variant ${shopifyItem.variantId}`);
           }
         } catch (error) {
-          console.error(`❌ Failed to sync Shopify inventory for variant ${shopifyItem.variantId}:`, error);
+          console.error(`Failed to sync Shopify inventory for variant ${shopifyItem.variantId}:`, error);
           failedFromShopify++;
         }
       }
@@ -561,7 +551,6 @@ export class ProductService {
               const variantExists = await this.shopifyService.validateVariant(mapping.channelVariantId as string);
               
               if (!variantExists) {
-                console.log(`⚠️ Shopify variant ${mapping.channelVariantId} no longer exists, skipping sync for variant ${item.variantId}`);
                 
                 // Mark the mapping as invalid
                 await db.update(channelMappings)
@@ -598,16 +587,13 @@ export class ProductService {
                   lastSyncAt: new Date(),
                 })
                 .where(eq(channelMappings.id, mapping.id as number));
-
-              console.log(`✅ Updated Shopify inventory for variant ${item.variantId}: ${item.available} available`);
               syncedToShopify++;
             } else {
-              console.log(`⚠️ No Shopify mapping found for variant ${item.variantId}, skipping sync`);
               skippedToShopify++;
             }
           }
         } catch (error) {
-          console.error(`❌ Failed to sync to Shopify for variant ${item.variantId}:`, error);
+          console.error(`Failed to sync to Shopify for variant ${item.variantId}:`, error);
           
           // Update the mapping status to failed
           if (mapping) {
@@ -637,8 +623,6 @@ export class ProductService {
         timestamp: new Date(),
       };
 
-      console.log(`📊 Bidirectional inventory sync completed: ${result.totalSynced} synced, ${result.totalFailed} failed`);
-
       // Log the sync operation
       await db.insert(syncLogs).values({
         channel: 'all',
@@ -650,7 +634,7 @@ export class ProductService {
 
       return result;
     } catch (error) {
-      console.error('❌ Bidirectional inventory sync failed:', error);
+      console.error('Bidirectional inventory sync failed:', error);
       throw error;
     }
   }
@@ -665,8 +649,6 @@ export class ProductService {
       if (!shopifyProduct.title) {
         throw new Error(`Invalid Shopify product data: missing title for product ${shopifyProduct.id}`);
       }
-
-      console.log(`🔄 Importing Shopify product: ${shopifyProduct.title} (ID: ${shopifyProduct.id})`);
       
       // Generate a safe SKU
       let safeSku = shopifyProduct.variants?.[0]?.sku;
@@ -688,14 +670,11 @@ export class ProductService {
         status: 'active',
       }).returning();
 
-      console.log(`✅ Created product: ${product.name} (SKU: ${product.sku})`);
-
       // Create variants
       const variants = [];
       for (const variant of shopifyProduct.variants || []) {
         // Validate variant data
         if (!variant.id) {
-          console.warn(`⚠️ Skipping variant without ID for product ${product.id}`);
           continue;
         }
 
@@ -740,9 +719,6 @@ export class ProductService {
         if (variantImages.length === 0 && variant.image) {
           variantImages.push(variant.image);
         }
-        
-        // Log image processing for debugging
-        console.log(`🖼️ Variant ${variant.title} images:`, variantImages);
         
         const [productVariant] = await db.insert(productVariants).values({
           productId: product.id,
@@ -789,8 +765,6 @@ export class ProductService {
           syncStatus: 'synced',
           lastSyncAt: new Date(),
         });
-
-        console.log(`✅ Created variant: ${variant.title}`);
       }
 
       // Log the import
@@ -805,7 +779,7 @@ export class ProductService {
 
       return { ...product, variants };
     } catch (error) {
-      console.error(`❌ Failed to import Shopify product: ${shopifyProduct.title}`, error);
+      console.error(`Failed to import Shopify product: ${shopifyProduct.title}`, error);
       
       // Log the error
       await db.insert(syncLogs).values({
@@ -823,11 +797,9 @@ export class ProductService {
   async importFromShopifyBulk(options: { limit?: number; syncDeletions?: boolean } = {}) {
     try {
       const limit = options.limit || 50;
-      console.log(`🔄 Starting bulk import from Shopify (limit: ${limit})`);
       
       // Get products from Shopify first
       const shopifyProducts = await this.shopifyService.getProducts(limit);
-      console.log(`📊 Found ${shopifyProducts.length} products in Shopify`);
       
       let importedCount = 0;
       let failedCount = 0;
@@ -837,16 +809,13 @@ export class ProductService {
         try {
           await this.importFromShopify(product);
           importedCount++;
-          console.log(`✅ Imported: ${product.title || product.id}`);
         } catch (error) {
           failedCount++;
           const errorMsg = `Failed to import ${product.title || product.id}: ${error instanceof Error ? error.message : 'Unknown error'}`;
           errors.push(errorMsg);
-          console.error(`❌ ${errorMsg}`);
+          console.error(`${errorMsg}`);
         }
       }
-      
-      console.log(`📊 Bulk import completed. Success: ${importedCount}, Failed: ${failedCount}`);
       
       return {
         success: true,
@@ -856,7 +825,7 @@ export class ProductService {
         errors: errors.length > 0 ? errors : undefined
       };
     } catch (error) {
-      console.error('❌ Bulk Shopify import failed:', error);
+      console.error('Bulk Shopify import failed:', error);
       throw error;
     }
   }
@@ -894,7 +863,7 @@ export class ProductService {
 
       return Array.from(productMap.values());
     } catch (error) {
-      console.error('❌ Error in getShopifyProducts:', error);
+      console.error('Error in getShopifyProducts:', error);
       throw new Error(`Failed to fetch Shopify products: ${(error as Error).message}`);
     }
   }
@@ -918,17 +887,14 @@ export class ProductService {
         message: `Product marked as deleted due to Shopify sync`,
         details: { productId },
       });
-
-      console.log(`✅ Product ${productId} marked as deleted`);
     } catch (error) {
-      console.error(`❌ Failed to mark product ${productId} as deleted:`, error);
+      console.error(`Failed to mark product ${productId} as deleted:`, error);
       throw error;
     }
   }
 
   async updateFromShopify(productId: number, shopifyProduct: any) {
     try {
-      console.log(`🔄 Updating product ${productId} from Shopify data`);
       
       // Update main product
       const [updatedProduct] = await db.update(products)
@@ -1000,7 +966,7 @@ export class ProductService {
 
       return { ...updatedProduct, variants };
     } catch (error) {
-      console.error(`❌ Failed to update product ${productId}:`, error);
+      console.error(`Failed to update product ${productId}:`, error);
       throw error;
     }
   }
@@ -1014,7 +980,7 @@ export class ProductService {
       
       return result.map(r => r.category).filter(Boolean);
     } catch (error) {
-      console.error('❌ Error in getDistinctCategories:', error);
+      console.error('Error in getDistinctCategories:', error);
       return [];
     }
   }
@@ -1028,7 +994,7 @@ export class ProductService {
       
       return result.map(r => r.brand).filter(Boolean);
     } catch (error) {
-      console.error('❌ Error in getDistinctBrands:', error);
+      console.error('Error in getDistinctBrands:', error);
       return [];
     }
   }
@@ -1041,7 +1007,7 @@ export class ProductService {
       
       return result.map(r => r.status).filter(Boolean);
     } catch (error) {
-      console.error('❌ Error in getDistinctStatuses:', error);
+      console.error('Error in getDistinctStatuses:', error);
       return [];
     }
   }
@@ -1056,7 +1022,7 @@ export class ProductService {
       
       return result.map(r => r.color).filter(Boolean);
     } catch (error) {
-      console.error('❌ Error in getDistinctColors:', error);
+      console.error('Error in getDistinctColors:', error);
       return [];
     }
   }
@@ -1071,14 +1037,13 @@ export class ProductService {
       
       return result.map(r => r.size).filter(Boolean);
     } catch (error) {
-      console.error('❌ Error in getDistinctSizes:', error);
+      console.error('Error in getDistinctSizes:', error);
       return [];
     }
   }
 
   async syncInventoryFromShopify() {
     try {
-      console.log('🔄 Starting inventory sync from Shopify...');
       
       // Get all Shopify channel mappings
       const shopifyMappings = await db.select()
@@ -1086,7 +1051,6 @@ export class ProductService {
         .where(eq(channelMappings.channel, 'shopify'));
 
       if (shopifyMappings.length === 0) {
-        console.log('ℹ️ No Shopify products found to sync inventory');
         return { synced: 0, total: 0, message: 'No Shopify products found' };
       }
 
@@ -1098,8 +1062,6 @@ export class ProductService {
       const batchSize = 10;
       for (let i = 0; i < shopifyMappings.length; i += batchSize) {
         const batch = shopifyMappings.slice(i, i + batchSize);
-        
-        console.log(`📦 Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(shopifyMappings.length / batchSize)}`);
         
         await Promise.all(batch.map(async (mapping) => {
           try {
@@ -1171,7 +1133,6 @@ export class ProductService {
             errorCount++;
             const errorMsg = `Failed to sync product ${mapping.productId}: ${(error as Error).message}`;
             errors.push(errorMsg);
-            console.error(`❌ ${errorMsg}`);
           }
         }));
 
@@ -1195,8 +1156,6 @@ export class ProductService {
           errors: errors.slice(0, 10) // Limit error details
         },
       });
-
-      console.log(`✅ Inventory sync completed. Synced: ${syncedCount}, Errors: ${errorCount}`);
       
       return {
         synced: syncedCount,
@@ -1207,7 +1166,7 @@ export class ProductService {
       };
 
     } catch (error) {
-      console.error('❌ Inventory sync from Shopify failed:', error);
+      console.error('Inventory sync from Shopify failed:', error);
       
       // Log the error
       await db.insert(syncLogs).values({
@@ -1219,6 +1178,96 @@ export class ProductService {
         details: { error: (error as Error).message },
       });
 
+      throw error;
+    }
+  }
+
+  // Clean up local data for products/variants that no longer exist on Shopify
+  async cleanupMissingShopifyProducts() {
+    try {
+      
+      // Get all products with Shopify mappings
+      const productsWithShopify = await db.select({
+        productId: products.id,
+        productName: products.name,
+        variantId: productVariants.id,
+        variantName: productVariants.name,
+        shopifyProductId: channelMappings.channelProductId,
+        shopifyVariantId: channelMappings.channelVariantId,
+      })
+      .from(products)
+      .innerJoin(productVariants, eq(products.id, productVariants.productId))
+      .innerJoin(channelMappings, eq(productVariants.id, channelMappings.variantId))
+      .where(eq(channelMappings.channel, 'shopify'));
+
+      let cleanedUp = 0;
+      let errors = 0;
+
+      for (const product of productsWithShopify) {
+        try {
+          if (!product.shopifyProductId || !product.shopifyVariantId) {
+            continue;
+          }
+
+          // Try to fetch the product from Shopify to see if it still exists
+          const shopifyInventory = await this.shopifyService.getProductInventory(
+            product.shopifyProductId as string,
+            product.shopifyVariantId as string
+          );
+
+          if (shopifyInventory === null) {
+            
+            // Delete inventory records for both channels
+            const deletedInventory = await db.delete(inventory)
+              .where(eq(inventory.variantId, product.variantId));
+            
+            // Delete channel mapping for this variant
+            const deletedMapping = await db.delete(channelMappings)
+              .where(and(
+                eq(channelMappings.variantId, product.variantId),
+                eq(channelMappings.channel, 'shopify')
+              ));
+          
+            
+            // Check if this was the last Shopify variant for this product
+            const remainingShopifyVariants = await db.select()
+              .from(channelMappings)
+              .where(and(
+                eq(channelMappings.productId, product.productId),
+                eq(channelMappings.channel, 'shopify')
+              ));
+            
+            if (remainingShopifyVariants.length === 0) {
+              // No more Shopify variants for this product - mark product as discontinued
+              await db.update(products)
+                .set({
+                  status: 'discontinued',
+                  updatedAt: new Date()
+                })
+                .where(eq(products.id, product.productId));
+            }
+            
+            cleanedUp++;
+          }
+
+          // Add small delay to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+        } catch (error) {
+          console.error(`Error validating product ${product.productName}:`, error);
+          errors++;
+        }
+      }
+      
+      return {
+        success: true,
+        cleanedUp,
+        errors,
+        total: productsWithShopify.length
+      };
+
+    } catch (error) {
+      console.error('Cleanup of missing Shopify products failed:', error);
       throw error;
     }
   }
